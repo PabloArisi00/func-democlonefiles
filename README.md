@@ -21,7 +21,7 @@ Esta función se activa mediante un **Blob Trigger** cuando un archivo nuevo lle
               ▼
 ┌─────────────────────────┐
 │    Azure Function App   │
-│  (Flex Consumption Plan)│
+│  (Consumption Plan)     │
 │                         │
 │  - Filtra por prefix    │
 │  - Preserva estructura  │
@@ -69,7 +69,7 @@ Origen:  from/2026/07/23/invoice_001.csv    → Ignorado (prefix no válido)    
 
 ## Requisitos previos
 
-- Python 3.14+
+- Python 3.11+
 - Azure CLI (`az`) autenticado
 - Subscription de Azure con permisos para crear recursos
 - Dos Storage Accounts (origen y destino)
@@ -126,14 +126,17 @@ az functionapp create \
   --name $FUNC_APP \
   --resource-group $RG \
   --storage-account $SOURCE_STORAGE \
-  --flexconsumption-location $LOCATION \
+  --consumption-plan-location $LOCATION \
   --runtime python \
-  --runtime-version 3.14 \
+  --runtime-version 3.11 \
   --functions-version 4 \
+  --os-type Linux \
   --https-only true
 ```
 
-> **Nota:** Se usa Flex Consumption (`--flexconsumption-location`) en lugar del antiguo Linux Consumption Plan, que alcanza End of Life el 30 de septiembre de 2028.
+> **Nota sobre Flex Consumption:** Linux Consumption Plan alcanza End of Life el 30 de septiembre de 2028.
+> La migración a Flex Consumption requiere usar Event Grid como source para el blob trigger
+> (`source="EventGrid"`) y crear un Event Grid subscription. Consultar [documentación de migración](https://learn.microsoft.com/en-us/azure/azure-functions/flex-consumption-plan).
 
 ### 3. Configurar App Settings
 
@@ -196,10 +199,11 @@ func start
 
 ### Latencia del Blob Trigger
 
-En Flex Consumption Plan, el blob trigger usa polling (LogsAndContainerScan). La latencia es significativamente menor que en el antiguo Consumption Plan:
-- **~1-5 segundos** en condiciones normales (las instancias se mantienen activas de forma más agresiva)
+En Consumption Plan (Linux), el blob trigger usa polling (LogsAndContainerScan). La latencia puede ser:
+- **~5-30 segundos** si la función está "caliente" (warm)
+- **Hasta 10 minutos** en cold start
 
-Para menor latencia aún, considerar [Event Grid trigger](https://learn.microsoft.com/en-us/azure/azure-functions/functions-bindings-storage-blob-trigger?tabs=python-v2%2Cisolated-process%2Cnodejs-v4&pivots=programming-language-python#event-grid-trigger) como alternativa.
+Para menor latencia, considerar [Event Grid trigger](https://learn.microsoft.com/en-us/azure/azure-functions/functions-bindings-storage-blob-trigger?tabs=python-v2%2Cisolated-process%2Cnodejs-v4&pivots=programming-language-python#event-grid-trigger) como alternativa.
 
 ### Filtro case-insensitive
 
@@ -246,7 +250,7 @@ source_blob_client.delete_blob()
 ## Stack
 
 - **Runtime**: Azure Functions v4
-- **Lenguaje**: Python 3.14 (v2 programming model)
-- **Plan**: Flex Consumption (Linux)
+- **Lenguaje**: Python 3.11 (v2 programming model)
+- **Plan**: Consumption (Linux)
 - **SDK**: azure-storage-blob 12.19+
 - **Extension Bundle**: Microsoft.Azure.Functions.ExtensionBundle 4.x
