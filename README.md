@@ -21,7 +21,7 @@ Esta función se activa mediante un **Blob Trigger** cuando un archivo nuevo lle
               ▼
 ┌─────────────────────────┐
 │    Azure Function App   │
-│    (Consumption Plan)   │
+│  (Flex Consumption Plan)│
 │                         │
 │  - Filtra por prefix    │
 │  - Preserva estructura  │
@@ -126,13 +126,14 @@ az functionapp create \
   --name $FUNC_APP \
   --resource-group $RG \
   --storage-account $SOURCE_STORAGE \
-  --consumption-plan-location $LOCATION \
+  --flexconsumption-location $LOCATION \
   --runtime python \
   --runtime-version 3.14 \
   --functions-version 4 \
-  --os-type Linux \
   --https-only true
 ```
+
+> **Nota:** Se usa Flex Consumption (`--flexconsumption-location`) en lugar del antiguo Linux Consumption Plan, que alcanza End of Life el 30 de septiembre de 2028.
 
 ### 3. Configurar App Settings
 
@@ -195,11 +196,10 @@ func start
 
 ### Latencia del Blob Trigger
 
-En Consumption Plan, el blob trigger usa polling (LogsAndContainerScan). La latencia puede ser:
-- **~5 segundos** si la función está "caliente" (warm)
-- **Hasta 10 minutos** en cold start
+En Flex Consumption Plan, el blob trigger usa polling (LogsAndContainerScan). La latencia es significativamente menor que en el antiguo Consumption Plan:
+- **~1-5 segundos** en condiciones normales (las instancias se mantienen activas de forma más agresiva)
 
-Para menor latencia, considerar [Event Grid trigger](https://learn.microsoft.com/en-us/azure/azure-functions/functions-bindings-storage-blob-trigger?tabs=python-v2%2Cisolated-process%2Cnodejs-v4&pivots=programming-language-python#event-grid-trigger) como alternativa.
+Para menor latencia aún, considerar [Event Grid trigger](https://learn.microsoft.com/en-us/azure/azure-functions/functions-bindings-storage-blob-trigger?tabs=python-v2%2Cisolated-process%2Cnodejs-v4&pivots=programming-language-python#event-grid-trigger) como alternativa.
 
 ### Filtro case-insensitive
 
@@ -247,6 +247,6 @@ source_blob_client.delete_blob()
 
 - **Runtime**: Azure Functions v4
 - **Lenguaje**: Python 3.14 (v2 programming model)
-- **Plan**: Consumption (Linux)
+- **Plan**: Flex Consumption (Linux)
 - **SDK**: azure-storage-blob 12.19+
 - **Extension Bundle**: Microsoft.Azure.Functions.ExtensionBundle 4.x
