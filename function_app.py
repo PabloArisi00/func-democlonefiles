@@ -7,8 +7,12 @@ app = func.FunctionApp()
 
 ALLOWED_PREFIXES = ["assoc", "scan", "report"]
 
+# Container names from environment variables (with defaults)
+SOURCE_CONTAINER = os.environ.get("SOURCE_CONTAINER", "from")
+DEST_CONTAINER = os.environ.get("DEST_CONTAINER", "togcp")
 
-@app.blob_trigger(arg_name="myblob", path="from/{year}/{month}/{day}/{filename}", connection="AzureWebJobsStorage")
+
+@app.blob_trigger(arg_name="myblob", path=f"{SOURCE_CONTAINER}/{{year}}/{{month}}/{{day}}/{{filename}}", connection="AzureWebJobsStorage")
 def democlonefiles(myblob: func.InputStream):
     """
     Azure Function triggered when a new blob arrives in the 'from' container.
@@ -39,14 +43,13 @@ def democlonefiles(myblob: func.InputStream):
         dest_blob_service_client = BlobServiceClient.from_connection_string(dest_connection_string)
 
         # Destination container from environment variable (default: togcp)
-        dest_container_name = os.environ.get("DEST_CONTAINER", "togcp")
-        dest_container_client = dest_blob_service_client.get_container_client(dest_container_name)
+        dest_container_client = dest_blob_service_client.get_container_client(DEST_CONTAINER)
 
         # Ensure destination container exists
         try:
             dest_container_client.get_container_properties()
         except Exception:
-            logging.info(f"Creating destination container '{dest_container_name}'")
+            logging.info(f"Creating destination container '{DEST_CONTAINER}'")
             dest_container_client.create_container()
 
         # Preserve folder structure: {dest_container}/year/month/day/filename
@@ -54,7 +57,7 @@ def democlonefiles(myblob: func.InputStream):
         dest_blob_client = dest_container_client.get_blob_client(dest_path)
         dest_blob_client.upload_blob(blob_data, overwrite=True)
 
-        logging.info(f"Successfully copied '{filename}' to destination: {dest_container_name}/{dest_path}")
+        logging.info(f"Successfully copied '{filename}' to destination: {DEST_CONTAINER}/{dest_path}")
 
     except Exception as e:
         logging.error(f"Error processing blob: {str(e)}")

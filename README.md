@@ -60,6 +60,7 @@ Origen:  from/2026/07/23/invoice_001.csv    → Ignorado (prefix no válido)    
 
 ```
 .
+├── .gitignore             # Excluye secrets y artefactos del repositorio
 ├── function_app.py        # Código de la función (Python v2 model)
 ├── host.json              # Configuración del runtime
 ├── requirements.txt       # Dependencias Python
@@ -71,8 +72,21 @@ Origen:  from/2026/07/23/invoice_001.csv    → Ignorado (prefix no válido)    
 
 - Python 3.14+
 - Azure CLI (`az`) autenticado
+- [Azure Functions Core Tools](https://learn.microsoft.com/en-us/azure/azure-functions/functions-run-local) (para desarrollo local)
 - Subscription de Azure con permisos para crear recursos
 - Dos Storage Accounts (origen y destino)
+
+### Permisos requeridos
+
+El usuario que ejecuta el despliegue necesita los siguientes roles en el Resource Group:
+
+| Rol | Propósito |
+|-----|-----------|
+| `Contributor` | Crear Function App, App Service Plan y Storage Accounts |
+| `Storage Account Contributor` | Obtener connection strings y crear containers |
+| `Storage Blob Data Contributor` | (Opcional) Subir blobs de prueba con `--auth-mode login` |
+
+> Si la organización tiene Azure Policies (ej: enforce HTTPS), asegurarse de incluir `--https-only true` en la creación de la Function App.
 
 ## Configuración
 
@@ -86,6 +100,8 @@ Origen:  from/2026/07/23/invoice_001.csv    → Ignorado (prefix no válido)    
 | `DEST_CONTAINER`      | Nombre del container destino                             | `togcp`  |
 | `FUNCTIONS_WORKER_RUNTIME` | Runtime del worker                                  | `python` |
 | `FUNCTIONS_EXTENSION_VERSION` | Versión del runtime de Functions                 | `~4`     |
+
+> **Nota sobre `SOURCE_CONTAINER`:** Cambiar esta variable requiere reiniciar la Function App para que el blob trigger apunte al nuevo container (el path se resuelve al inicio del proceso).
 
 ### Containers requeridos
 
@@ -159,19 +175,30 @@ az functionapp config appsettings set \
 ### 4. Deploy
 
 ```bash
-# Crear zip (excluir local.settings.json)
-zip -r deploy.zip . -x "local.settings.json" -x "__pycache__/*" -x ".venv/*"
+# Crear zip (excluir archivos innecesarios)
+zip -r deploy.zip . -x "local.settings.json" -x "__pycache__/*" -x ".venv/*" -x ".git/*" -x ".gitignore" -x "README.md"
 
-# Deploy con build remoto
+# Deploy con build remoto (instala dependencias de requirements.txt en Azure)
 az functionapp deployment source config-zip \
   --name $FUNC_APP \
   --resource-group $RG \
   --src deploy.zip \
   --build-remote true
 
-# Restart para cargar el nuevo código
+# Restart para que el runtime cargue la función
 az functionapp restart --name $FUNC_APP --resource-group $RG
 ```
+
+> **Importante:** El restart después del deploy es obligatorio en Linux Consumption Plan. Sin él, la función puede no registrarse hasta el siguiente ciclo de polling del runtime.
+
+### 5. Verificar
+
+```bash
+# Confirmar que la función está registrada
+az functionapp function list --name $FUNC_APP --resource-group $RG -o table
+```
+
+Si la función no aparece, esperar 30 segundos y reintentar. En caso de persistir, verificar la sección de Troubleshooting.
 
 ## Desarrollo local
 
@@ -223,29 +250,88 @@ Editar la constante `ALLOWED_PREFIXES` en `function_app.py`:
 ALLOWED_PREFIXES = ["assoc", "scan", "report"]
 ```
 
-### Cambiar containers
+### Cambiar container origen
 
-Configurar via App Settings (no requiere cambios en el código):
+Configurar via App Settings y reiniciar (no requiere cambios en el código):
 
 ```bash
 az functionapp config appsettings set \
   --name $FUNC_APP \
   --resource-group $RG \
-  --settings "SOURCE_CONTAINER=my-source" "DEST_CONTAINER=my-destination"
+  --settings "SOURCE_CONTAINER=mi-origen"
+
+# Reiniciar para que el trigger apunte al nuevo container
+az functionapp restart --name $FUNC_APP --resource-group $RG
 ```
 
-> **Nota:** Después de cambiar `SOURCE_CONTAINER` es necesario reiniciar la Function App para que el blob trigger apunte al nuevo container.
+### Cambiar container destino
+
+Configurar via App Settings (no requiere cambios en el código ni restart):
+
+```bash
+az functionapp config appsettings set \
+  --name $FUNC_APP \
+  --resource-group $RG \
+  --settings "DEST_CONTAINER=mi-destino"
+```
 
 ### Cambiar a Move (mover en vez de copiar)
 
-Agregar después del upload:
+Agregar después del upload en `function_app.py`:
 
 ```python
 # Delete source blob after copy
-source_container_client = blob_service_client.get_container_client("from")
+source_connection_string = os.environ.get("AzureWebJobsStorage")
+source_blob_service_client = BlobServiceClient.from_connection_string(source_connection_string)
+source_container_client = source_blob_service_client.get_container_client("from")
 source_blob_client = source_container_client.get_blob_client(blob_name)
 source_blob_client.delete_blob()
 ```
+
+Donde `blob_name` es la variable con el path relativo del archivo (ej: `2026/07/24/assoc_data.csv`).
+
+## Troubleshooting
+
+### La función no se registra después del deploy
+
+1. Ejecutar restart: `az functionapp restart --name $FUNC_APP --resource-group $RG`
+2. Esperar 30 segundos y verificar con `az functionapp function list`
+3. Si persiste, verificar los logs:
+   ```bash
+   az monitor app-insights query --app $FUNC_APP --resource-group $RG \
+     --analytics-query "traces | where message contains 'function' | order by timestamp desc | take 5"
+   ```
+
+### El blob trigger no se dispara
+
+1. Verificar que `AzureWebJobsStorage` apunta al Storage Account correcto
+2. Verificar que el archivo se sube con la estructura `from/{year}/{month}/{day}/{filename}`
+3. Revisar si el `blobscaninfo` existe:
+   ```bash
+   az storage blob list --account-name <storage> --container-name azure-webjobs-hosts \
+     --prefix "blobscaninfo/" --auth-mode key --query "[].name" -o tsv
+   ```
+4. Si el trigger quedó "pegado", eliminar el scanInfo y reiniciar:
+   ```bash
+   az storage blob delete --account-name <storage> --container-name azure-webjobs-hosts \
+     --name "blobscaninfo/<function-app-name>/<storage-name>/from/scanInfo" --auth-mode key
+   az functionapp restart --name $FUNC_APP --resource-group $RG
+   ```
+
+### Error de conexión al Storage Account destino
+
+- Verificar que `DestinationStorage` está configurado correctamente
+- Confirmar que el connection string incluye la key válida:
+  ```bash
+  az functionapp config appsettings list --name $FUNC_APP --resource-group $RG \
+    --query "[?name=='DestinationStorage'].value" -o tsv | grep -o "AccountName=[^;]*"
+  ```
+
+### Cold start lento (hasta 10 minutos)
+
+Esto es normal en Linux Consumption Plan. Para reducir el cold start:
+- Considerar migrar a un plan Premium (Always Ready instances)
+- Usar Event Grid trigger en vez de polling
 
 ## Stack
 
