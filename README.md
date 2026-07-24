@@ -69,7 +69,7 @@ Origen:  from/2026/07/23/invoice_001.csv    → Ignorado (prefix no válido)    
 
 ## Requisitos previos
 
-- Python 3.11+
+- Python 3.14+
 - Azure CLI (`az`) autenticado
 - Subscription de Azure con permisos para crear recursos
 - Dos Storage Accounts (origen y destino)
@@ -128,7 +128,7 @@ az functionapp create \
   --storage-account $SOURCE_STORAGE \
   --consumption-plan-location $LOCATION \
   --runtime python \
-  --runtime-version 3.11 \
+  --runtime-version 3.14 \
   --functions-version 4 \
   --os-type Linux \
   --https-only true
@@ -250,7 +250,7 @@ source_blob_client.delete_blob()
 ## Stack
 
 - **Runtime**: Azure Functions v4
-- **Lenguaje**: Python 3.11 (v2 programming model)
+- **Lenguaje**: Python 3.14 (v2 programming model)
 - **Plan**: Consumption (Linux)
 - **SDK**: azure-storage-blob 12.19+
 - **Extension Bundle**: Microsoft.Azure.Functions.ExtensionBundle 4.x
