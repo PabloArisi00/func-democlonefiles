@@ -78,12 +78,14 @@ Origen:  from/2026/07/23/invoice_001.csv    → Ignorado (prefix no válido)    
 
 ### Variables de entorno (App Settings)
 
-| Variable              | Descripción                                              |
-|-----------------------|----------------------------------------------------------|
-| `AzureWebJobsStorage` | Connection string del Storage Account **origen** (donde está el container `from`) |
-| `DestinationStorage`  | Connection string del Storage Account **destino** (donde se copia al container `togcp`) |
-| `FUNCTIONS_WORKER_RUNTIME` | `python`                                            |
-| `FUNCTIONS_EXTENSION_VERSION` | `~4`                                             |
+| Variable              | Descripción                                              | Default  |
+|-----------------------|----------------------------------------------------------|----------|
+| `AzureWebJobsStorage` | Connection string del Storage Account **origen**        | —        |
+| `DestinationStorage`  | Connection string del Storage Account **destino**        | —        |
+| `SOURCE_CONTAINER`    | Nombre del container origen                              | `from`   |
+| `DEST_CONTAINER`      | Nombre del container destino                             | `togcp`  |
+| `FUNCTIONS_WORKER_RUNTIME` | Runtime del worker                                  | `python` |
+| `FUNCTIONS_EXTENSION_VERSION` | Versión del runtime de Functions                 | `~4`     |
 
 ### Containers requeridos
 
@@ -143,7 +145,11 @@ DEST_CONN=$(az storage account show-connection-string --name $DEST_STORAGE --res
 az functionapp config appsettings set \
   --name $FUNC_APP \
   --resource-group $RG \
-  --settings "AzureWebJobsStorage=$SOURCE_CONN" "DestinationStorage=$DEST_CONN"
+  --settings \
+    "AzureWebJobsStorage=$SOURCE_CONN" \
+    "DestinationStorage=$DEST_CONN" \
+    "SOURCE_CONTAINER=from" \
+    "DEST_CONTAINER=togcp"
 ```
 
 ### 4. Deploy
@@ -215,8 +221,16 @@ ALLOWED_PREFIXES = ["assoc", "scan", "report"]
 
 ### Cambiar containers
 
-- **Origen**: modificar el parámetro `path` del decorador `@app.blob_trigger`
-- **Destino**: modificar la referencia `"togcp"` en el código
+Configurar via App Settings (no requiere cambios en el código):
+
+```bash
+az functionapp config appsettings set \
+  --name $FUNC_APP \
+  --resource-group $RG \
+  --settings "SOURCE_CONTAINER=my-source" "DEST_CONTAINER=my-destination"
+```
+
+> **Nota:** Después de cambiar `SOURCE_CONTAINER` es necesario reiniciar la Function App para que el blob trigger apunte al nuevo container.
 
 ### Cambiar a Move (mover en vez de copiar)
 

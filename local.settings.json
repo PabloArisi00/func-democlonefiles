@@ -4,6 +4,8 @@
     "AzureWebJobsStorage": "UseDevelopmentStorage=true",
     "FUNCTIONS_WORKER_RUNTIME": "python",
     "FUNCTIONS_EXTENSION_VERSION": "~4",
-    "DestinationStorage": "<destination-storage-connection-string>"
+    "DestinationStorage": "<destination-storage-connection-string>",
+    "SOURCE_CONTAINER": "from",
+    "DEST_CONTAINER": "togcp"
   }
 }
