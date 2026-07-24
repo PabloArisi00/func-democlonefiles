@@ -1,0 +1,17 @@
+# Azure Functions
+local.settings.json
+.python_packages/
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+
+# IDE
+.vscode/
+.idea/
+
+# Deploy artifacts
+deploy.zip
+*.zip
